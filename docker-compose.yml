@@ -1,0 +1,19 @@
+services:
+  terraform-service:
+    image: hashicorp/terraform:latest
+    container_name: terraform-container
+    volumes:
+      - ./data:/workspace
+    env_file:
+      - .env
+    working_dir: /workspace
+    entrypoint: ["/bin/sh"]
+    stdin_open: true
+    tty: true
+    networks:
+      - shared_network
+
+networks:
+  shared_network:
+    name: intent_recognition_localstack_network
+    external: true
