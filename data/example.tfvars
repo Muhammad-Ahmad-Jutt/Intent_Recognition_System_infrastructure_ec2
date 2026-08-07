@@ -1,0 +1,8 @@
+aws_access_key = "dummy"
+aws_secret_key = "dummy"
+aws_region = "eu-west-1"
+dev_instance_name = "dev_instance"
+prod_instance_name = "prod_instance"
+dev_instance_type = "t2.large"
+prod_instance_type = "t2.medium"
+key_pair_name = "keypair-name.pem"

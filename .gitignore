@@ -1,3 +1,5 @@
 .terraform*
 *.tfstate*
 .env
+data/example.tfvars
+*.auto.tfvars
