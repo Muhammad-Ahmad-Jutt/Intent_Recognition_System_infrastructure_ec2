@@ -17,8 +17,8 @@ terraform {
 
 provider "aws" {
 
-  access_key = var.aws_access_key
-  secret_key = var.aws_secret_key
+  access_key = var.aws_access_key_id
+  secret_key = var.aws_secret_access_key
   region     = var.aws_region
 
 
@@ -29,9 +29,9 @@ provider "aws" {
     iam = "http://localstack-main:4566"
     s3  = "http://localstack-main:4566"
     ecr = "http://localstack-main:4566"
+    secretsmanager = "http://localstack-main:4566"
   }
-
-  s3_use_path_style=true
+  s3_use_path_style           = true
   skip_credentials_validation = true
   skip_metadata_api_check     = true
   skip_requesting_account_id  = true
