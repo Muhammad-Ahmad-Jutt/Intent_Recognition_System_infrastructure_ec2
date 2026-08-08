@@ -28,7 +28,15 @@ variable "prod_instance_name" {
   description = "production instance name"
   type        = string
 }
+variable "s3_bucket_name" {
+  description = "Name of the public S3 bucket"
+  type        = string
+}
 
+variable "ecr_repo_name" {
+  description = "Name of the ECR repository"
+  type        = string
+}
 variable "dev_instance_type" {
   description = "development instance type"
   type        = string

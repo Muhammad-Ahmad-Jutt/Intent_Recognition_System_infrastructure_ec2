@@ -111,6 +111,79 @@ output "trainer_instance_id" {
 
 }
 
+resource "aws_s3_bucket" "public_bucket" {
+  bucket = var.s3_bucket_name
+
+  tags = {
+    Name    = var.s3_bucket_name
+    Purpose = "public storage"
+  }
+}
+
+resource "aws_s3_bucket_acl" "public_bucket_acl" {
+  bucket = aws_s3_bucket.public_bucket.id
+  acl    = "public-read"
+}
+
+resource "aws_s3_bucket_public_access_block" "public_bucket" {
+  bucket = aws_s3_bucket.public_bucket.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "public_bucket_policy" {
+  bucket = aws_s3_bucket.public_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid = "AllowPublicRead"
+        Effect = "Allow"
+        Principal = "*"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = [
+          "${aws_s3_bucket.public_bucket.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_ecr_repository" "repo" {
+  name                 = var.ecr_repo_name
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "repo_policy" {
+  repository = aws_ecr_repository.repo.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Expire images older than 1 day"
+        selection = {
+          tagStatus   = "any"
+          countType   = "sinceImagePushed"
+          countNumber = 1
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
 
 output "production_instance_id" {
 

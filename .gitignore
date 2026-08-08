@@ -3,3 +3,5 @@
 .env
 data/example.tfvars
 *.auto.tfvars
+*.pem
+todo
