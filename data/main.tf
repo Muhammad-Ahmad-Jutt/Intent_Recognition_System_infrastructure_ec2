@@ -91,7 +91,6 @@ locals {
     aws_access_key_id           = var.aws_access_key_id
     aws_secret_access_key       = var.aws_secret_access_key
     aws_region                  = var.aws_region
-    aws_endpoint_url            = var.aws_endpoint_url
   }
 
   dev_secret = merge(
@@ -152,7 +151,7 @@ resource "aws_secretsmanager_secret_version" "prod_secret_version" {
 # ---------------------------------------------------------
 
 resource "aws_instance" "trainer" {
-  ami           = "ami-024f768332f0"
+  ami           = "ami-0bdc7d025135d7b49"
   instance_type = var.dev_instance_type
 
   key_name = aws_key_pair.generated_key.key_name
@@ -165,12 +164,13 @@ resource "aws_instance" "trainer" {
     aws_access_key_id     = var.aws_access_key_id
     aws_secret_access_key = var.aws_secret_access_key
     aws_region            = var.aws_region
-    aws_endpoint_url      = var.aws_endpoint_url
 
     secret_manager_name = var.secret_manager_dev_name
 
     environment = "development"
   })
+
+  iam_instance_profile = aws_iam_instance_profile.trainer_profile.name
 
   # Make sure the secret exists BEFORE user_data runs.
   depends_on = [
@@ -188,7 +188,7 @@ resource "aws_instance" "trainer" {
 # ---------------------------------------------------------
 
 resource "aws_instance" "web_server" {
-  ami           = "ami-024f768332f0"
+  ami           = "ami-0bdc7d025135d7b49"
   instance_type = var.prod_instance_type
 
   key_name = aws_key_pair.generated_key.key_name
@@ -201,12 +201,13 @@ resource "aws_instance" "web_server" {
     aws_access_key_id     = var.aws_access_key_id
     aws_secret_access_key = var.aws_secret_access_key
     aws_region            = var.aws_region
-    aws_endpoint_url      = var.aws_endpoint_url
 
     secret_manager_name = var.secret_manager_prod_name
 
     environment = "production"
   })
+
+  iam_instance_profile = aws_iam_instance_profile.production_profile.name
 
   # Make sure the secret exists BEFORE user_data runs.
   depends_on = [
@@ -222,6 +223,9 @@ resource "aws_instance" "web_server" {
 # ---------------------------------------------------------
 # S3 Bucket
 # ---------------------------------------------------------
+# ---------------------------------------------------------
+# S3 Bucket
+# ---------------------------------------------------------
 
 resource "aws_s3_bucket" "public_bucket" {
   bucket = var.s3_bucket_name
@@ -232,11 +236,7 @@ resource "aws_s3_bucket" "public_bucket" {
   }
 }
 
-resource "aws_s3_bucket_acl" "public_bucket_acl" {
-  bucket = aws_s3_bucket.public_bucket.id
-  acl    = "public-read"
-}
-
+# 1. Turn off public access blocks FIRST
 resource "aws_s3_bucket_public_access_block" "public_bucket" {
   bucket = aws_s3_bucket.public_bucket.id
 
@@ -246,22 +246,23 @@ resource "aws_s3_bucket_public_access_block" "public_bucket" {
   restrict_public_buckets = false
 }
 
+# 2. Apply the public read bucket policy SECOND (depends explicitly on the block removal)
 resource "aws_s3_bucket_policy" "public_bucket_policy" {
   bucket = aws_s3_bucket.public_bucket.id
 
+  # This forces Terraform to wait until the public block is safely removed before applying the policy
+  depends_on = [aws_s3_bucket_public_access_block.public_bucket]
+
   policy = jsonencode({
     Version = "2012-10-17"
-
     Statement = [
       {
         Sid       = "AllowPublicRead"
         Effect    = "Allow"
         Principal = "*"
-
         Action = [
           "s3:GetObject"
         ]
-
         Resource = [
           "${aws_s3_bucket.public_bucket.arn}/*"
         ]
@@ -269,6 +270,7 @@ resource "aws_s3_bucket_policy" "public_bucket_policy" {
     ]
   })
 }
+
 
 # ---------------------------------------------------------
 # ECR Repository
@@ -290,21 +292,209 @@ resource "aws_ecr_lifecycle_policy" "repo_policy" {
     rules = [
       {
         rulePriority = 1
-
-        description = "Expire images older than 1 day"
-
+        description  = "Expire images older than 1 day"
         selection = {
           tagStatus   = "any"
           countType   = "sinceImagePushed"
+          countUnit   = "days" # <-- Added this missing required parameter
           countNumber = 1
         }
-
         action = {
           type = "expire"
         }
       }
     ]
   })
+}
+
+# ---------------------------------------------------------
+# IAM roles, users and credentials
+# ---------------------------------------------------------
+
+resource "aws_iam_role" "trainer_role" {
+  name = "${var.dev_instance_name}-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "production_role" {
+  name = "${var.prod_instance_name}-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "trainer_profile" {
+  name = "${var.dev_instance_name}-instance-profile"
+  role = aws_iam_role.trainer_role.name
+}
+
+resource "aws_iam_instance_profile" "production_profile" {
+  name = "${var.prod_instance_name}-instance-profile"
+  role = aws_iam_role.production_role.name
+}
+
+resource "aws_iam_role_policy" "trainer_bucket_policy" {
+  role = aws_iam_role.trainer_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.public_bucket.arn,
+          "${aws_s3_bucket.public_bucket.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "production_bucket_policy" {
+  role = aws_iam_role.production_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.public_bucket.arn,
+          "${aws_s3_bucket.public_bucket.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_user" "trainer_user" {
+  name = "${var.dev_instance_name}-user"
+}
+
+resource "aws_iam_user" "production_user" {
+  name = "${var.prod_instance_name}-user"
+}
+
+resource "aws_iam_user_policy" "trainer_user_policy" {
+  user = aws_iam_user.trainer_user.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.public_bucket.arn,
+          "${aws_s3_bucket.public_bucket.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_user_policy" "production_user_policy" {
+  user = aws_iam_user.production_user.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.public_bucket.arn,
+          "${aws_s3_bucket.public_bucket.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_access_key" "trainer_user_key" {
+  user = aws_iam_user.trainer_user.name
+}
+
+resource "aws_iam_access_key" "production_user_key" {
+  user = aws_iam_user.production_user.name
+}
+
+locals {
+  terraform_export = {
+    s3_bucket = {
+      name = aws_s3_bucket.public_bucket.bucket
+      arn  = aws_s3_bucket.public_bucket.arn
+    }
+    roles = {
+      trainer = {
+        name = aws_iam_role.trainer_role.name
+        arn  = aws_iam_role.trainer_role.arn
+      }
+      production = {
+        name = aws_iam_role.production_role.name
+        arn  = aws_iam_role.production_role.arn
+      }
+    }
+    credentials = {
+      trainer = {
+        access_key = aws_iam_access_key.trainer_user_key.id
+        secret_key = aws_iam_access_key.trainer_user_key.secret
+      }
+      production = {
+        access_key = aws_iam_access_key.production_user_key.id
+        secret_key = aws_iam_access_key.production_user_key.secret
+      }
+    }
+  }
+}
+
+resource "local_file" "terraform_export" {
+  content  = jsonencode(local.terraform_export)
+  filename = "${path.module}/terraform-outputs.json"
 }
 
 # ---------------------------------------------------------
