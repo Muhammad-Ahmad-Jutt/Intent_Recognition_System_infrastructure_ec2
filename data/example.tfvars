@@ -1,7 +1,6 @@
 ﻿aws_access_key_id        = "dummy"
 aws_secret_access_key    = "dummy"
 aws_region          = "us-east-1"
-aws_endpoint_url         = "http://localstack-container:4566"
 dev_instance_name        = "dev_instance"
 prod_instance_name       = "prod_instance"
 dev_instance_type        = "t2.large"

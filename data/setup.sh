@@ -17,7 +17,6 @@ echo "Running as: $(whoami)"
 echo "Environment: ${environment}"
 echo "Secret name: ${secret_manager_name}"
 echo "AWS region: ${aws_region}"
-echo "AWS endpoint: ${aws_endpoint_url}"
 
 
 # =========================================================
@@ -39,8 +38,7 @@ dnf install -y \
     docker \
     git \
     unzip \
-    python3 \
-    curl
+    python3 
 
 
 # =========================================================
@@ -131,7 +129,6 @@ cat > /etc/app/app_env.env <<EOF
 aws_access_key_id=${aws_access_key_id}
 aws_secret_access_key=${aws_secret_access_key}
 aws_region=${aws_region}
-aws_endpoint_url=${aws_endpoint_url}
 environment=${environment}
 secret_manager_name=${secret_manager_name}
 EOF
@@ -155,7 +152,6 @@ export AWS_DEFAULT_REGION="${aws_region}"
 echo "Testing Secrets Manager connectivity..."
 
 if ! aws secretsmanager list-secrets \
-    --endpoint-url "${aws_endpoint_url}" \
     --region "${aws_region}" \
     >/tmp/secrets-list.json 2>/tmp/secrets-error.log
 then
@@ -181,7 +177,6 @@ echo "${secret_manager_name}"
 if secret_string=$(
     aws secretsmanager get-secret-value \
         --secret-id "${secret_manager_name}" \
-        --endpoint-url "${aws_endpoint_url}" \
         --region "${aws_region}" \
         --query SecretString \
         --output text

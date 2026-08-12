@@ -13,10 +13,6 @@ variable "aws_region" {
   type        = string
 }
 
-variable "aws_endpoint_url" {
-  description = "AWS endpoint URL for localstack or AWS"
-  type        = string
-}
 
 
 variable "key_pair_name" {
