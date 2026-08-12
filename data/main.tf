@@ -465,6 +465,9 @@ resource "aws_iam_access_key" "production_user_key" {
 
 locals {
   terraform_export = {
+    ecr_repo = {
+      info = aws_ecr_repository.repo
+    }
     s3_bucket = {
       name = aws_s3_bucket.public_bucket.bucket
       arn  = aws_s3_bucket.public_bucket.arn
@@ -501,22 +504,18 @@ resource "local_file" "terraform_export" {
 # Outputs
 # ---------------------------------------------------------
 
-output "trainer_instance_id" {
-  value = aws_instance.trainer.id
-}
-
-output "production_instance_id" {
-  value = aws_instance.web_server.id
-}
 
 output "private_key_path" {
   value = local_file.private_key.filename
 }
 
-output "trainer_private_ip" {
-  value = aws_instance.trainer.private_ip
+output "trainer_public_ip" {
+  value = aws_instance.trainer.public_ip
 }
 
-output "production_private_ip" {
-  value = aws_instance.web_server.private_ip
+output "production_public_ip" {
+  value = aws_instance.web_server.public_ip
+}
+output "ecr_url" {
+  value = aws_ecr_repository.repo.arn
 }
