@@ -1,11 +1,14 @@
 services:
   terraform-service:
-    image: hashicorp/terraform:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: terraform-container
     volumes:
       - ./data:/workspace
-    env_file:
-      - .env
+      - terraform_aws_credentials:/root/.aws
+    # env_file:
+    #   - .env
     working_dir: /workspace
     entrypoint: ["/bin/sh"]
     stdin_open: true
@@ -17,3 +20,6 @@ networks:
   shared_network:
     name: intent_recognition_localstack_network
     external: true
+
+volumes:
+  terraform_aws_credentials:

@@ -1,7 +1,14 @@
+# =========================================================
+# TERRAFORM
+# =========================================================
+
 terraform {
+  required_version = ">= 1.5.0"
+
   required_providers {
     aws = {
-      source = "hashicorp/aws"
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
     }
 
     tls = {
@@ -15,18 +22,17 @@ terraform {
 }
 
 
+# =========================================================
+# AWS PROVIDER
+# =========================================================
+
 provider "aws" {
-
-  access_key = var.aws_access_key_id
-  secret_key = var.aws_secret_access_key
-  region     = var.aws_region
-
-
-
-
-  s3_use_path_style           = true
-  skip_credentials_validation = true
-  skip_metadata_api_check     = true
-  skip_requesting_account_id  = true
-
+  region = var.aws_region
 }
+
+
+# =========================================================
+# CURRENT AWS ACCOUNT
+# =========================================================
+
+data "aws_caller_identity" "current" {}

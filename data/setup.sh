@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
+
 # =========================================================
-# Logging
+# LOGGING
 # =========================================================
 
 exec > >(tee -a /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
@@ -11,6 +12,7 @@ exec > >(tee -a /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 
 echo "================================================="
 echo "USER DATA STARTED"
 echo "================================================="
+
 date
 
 echo "Running as: $(whoami)"
@@ -20,7 +22,7 @@ echo "AWS region: ${aws_region}"
 
 
 # =========================================================
-# Update packages
+# UPDATE PACKAGES
 # =========================================================
 
 echo "Updating packages..."
@@ -29,20 +31,21 @@ dnf update -y
 
 
 # =========================================================
-# Install required packages
+# INSTALL REQUIRED PACKAGES
 # =========================================================
 
-echo "Installing Docker, Git, unzip, Python, curl..."
+echo "Installing required packages..."
 
 dnf install -y \
     docker \
     git \
     unzip \
-    python3 
+    python3 \
+    awscli
 
 
 # =========================================================
-# Start Docker
+# DOCKER
 # =========================================================
 
 echo "Starting Docker..."
@@ -57,7 +60,7 @@ docker --version
 
 
 # =========================================================
-# Add ec2-user to Docker group
+# DOCKER GROUP
 # =========================================================
 
 echo "Adding ec2-user to Docker group..."
@@ -66,7 +69,7 @@ usermod -aG docker ec2-user || true
 
 
 # =========================================================
-# Install Docker Compose
+# DOCKER COMPOSE
 # =========================================================
 
 if ! command -v docker-compose >/dev/null 2>&1; then
@@ -85,31 +88,58 @@ else
 
 fi
 
+
+echo "Docker Compose version:"
 docker-compose version || true
 
 
 # =========================================================
-# Install AWS CLI
+# AWS CLI
 # =========================================================
-
-if ! command -v aws >/dev/null 2>&1; then
-
-    echo "Installing AWS CLI..."
-
-    dnf install -y awscli
-
-else
-
-    echo "AWS CLI already installed."
-
-fi
 
 echo "AWS CLI version:"
 aws --version
 
 
 # =========================================================
-# Create application environment directory
+# AWS IAM ROLE TEST
+#
+# IMPORTANT:
+#
+# We DO NOT configure:
+#
+# AWS_ACCESS_KEY_ID
+# AWS_SECRET_ACCESS_KEY
+#
+# EC2 gets temporary credentials automatically from
+# its IAM instance profile.
+# =========================================================
+
+echo "Testing EC2 IAM role..."
+
+if aws sts get-caller-identity \
+    --region "${aws_region}" \
+    >/tmp/aws-identity.json \
+    2>/tmp/aws-identity-error.log
+then
+
+    echo "EC2 IAM role is working."
+
+    cat /tmp/aws-identity.json
+
+else
+
+    echo "ERROR: EC2 IAM role is not working."
+
+    cat /tmp/aws-identity-error.log
+
+    exit 1
+
+fi
+
+
+# =========================================================
+# CREATE APPLICATION DIRECTORY
 # =========================================================
 
 echo "Creating /etc/app..."
@@ -120,14 +150,12 @@ chmod 700 /etc/app
 
 
 # =========================================================
-# Create initial application environment file
+# INITIAL ENVIRONMENT FILE
 # =========================================================
 
 echo "Creating application environment file..."
 
 cat > /etc/app/app_env.env <<EOF
-aws_access_key_id=${aws_access_key_id}
-aws_secret_access_key=${aws_secret_access_key}
 aws_region=${aws_region}
 environment=${environment}
 secret_manager_name=${secret_manager_name}
@@ -135,44 +163,16 @@ EOF
 
 chmod 600 /etc/app/app_env.env
 
-
-# =========================================================
-# Configure AWS CLI environment
-# =========================================================
-
-export AWS_ACCESS_KEY_ID="${aws_access_key_id}"
-export AWS_SECRET_ACCESS_KEY="${aws_secret_access_key}"
-export AWS_DEFAULT_REGION="${aws_region}"
+chown root:root /etc/app/app_env.env
 
 
 # =========================================================
-# Test AWS / LocalStack connectivity
+# GET SECRET FROM SECRETS MANAGER
+#
+# AWS CLI automatically uses the EC2 IAM role.
 # =========================================================
 
-echo "Testing Secrets Manager connectivity..."
-
-if ! aws secretsmanager list-secrets \
-    --region "${aws_region}" \
-    >/tmp/secrets-list.json 2>/tmp/secrets-error.log
-then
-
-    echo "ERROR: Unable to connect to Secrets Manager."
-
-    echo "AWS CLI error:"
-    cat /tmp/secrets-error.log
-
-    exit 1
-fi
-
-echo "Secrets Manager connectivity successful."
-
-
-# =========================================================
-# Retrieve secret
-# =========================================================
-
-echo "Retrieving secret:"
-echo "${secret_manager_name}"
+echo "Retrieving secret..."
 
 if secret_string=$(
     aws secretsmanager get-secret-value \
@@ -195,7 +195,7 @@ fi
 
 
 # =========================================================
-# Validate secret JSON
+# VALIDATE SECRET
 # =========================================================
 
 export SECRET_STRING="$secret_string"
@@ -208,27 +208,34 @@ secret_string = os.environ["SECRET_STRING"]
 
 try:
     secret = json.loads(secret_string)
+
 except json.JSONDecodeError as e:
     print("ERROR: SecretString is not valid JSON.")
     print(e)
     raise SystemExit(1)
 
+
 if not isinstance(secret, dict):
     print("ERROR: SecretString must contain a JSON object.")
     raise SystemExit(1)
 
+
 print("Secret JSON validated successfully.")
 
+
 with open("/etc/app/app_env.env", "a") as f:
+
     for key, value in secret.items():
         f.write(f"{key}={value}\n")
 
+
 print("Secret values written to /etc/app/app_env.env")
+
 PY
 
 
 # =========================================================
-# Secure permissions
+# SECURE ENVIRONMENT FILE
 # =========================================================
 
 chmod 600 /etc/app/app_env.env
@@ -237,20 +244,59 @@ chown root:root /etc/app/app_env.env
 
 
 # =========================================================
-# Show environment variable names only
-# Do NOT print secret values
+# SHOW ONLY VARIABLE NAMES
+#
+# NEVER PRINT SECRET VALUES.
 # =========================================================
 
-echo "Environment file contains:"
+echo "Environment variables configured:"
 
 cut -d '=' -f 1 /etc/app/app_env.env
 
 
 # =========================================================
-# Finished
+# SSM AGENT
+# =========================================================
+
+echo "Checking AWS SSM Agent..."
+
+if systemctl list-unit-files | grep -q "amazon-ssm-agent"; then
+
+    echo "SSM Agent found."
+
+    systemctl enable --now amazon-ssm-agent
+
+    echo "SSM Agent status:"
+    systemctl is-active amazon-ssm-agent || true
+
+else
+
+    echo "SSM Agent service was not found."
+
+    echo "Trying to install amazon-ssm-agent..."
+
+    if dnf install -y amazon-ssm-agent; then
+
+        systemctl enable --now amazon-ssm-agent
+
+        echo "SSM Agent installed successfully."
+
+    else
+
+        echo "WARNING: Could not install SSM Agent."
+
+        echo "Make sure the selected AMI contains the SSM Agent."
+    fi
+
+fi
+
+
+# =========================================================
+# FINAL STATUS
 # =========================================================
 
 echo "================================================="
 echo "USER DATA COMPLETED SUCCESSFULLY"
 echo "================================================="
+
 date
