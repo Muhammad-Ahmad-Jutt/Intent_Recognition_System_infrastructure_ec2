@@ -1,0 +1,31 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "ecr:PutLifecyclePolicy",
+                "ecr:DeleteSigningConfiguration",
+                "ecr:GetLifecyclePolicyPreview",
+                "ecr:CreateRepository",
+                "ecr:DescribeRegistry",
+                "ecr:PutImageScanningConfiguration",
+                "ecr:ListTagsForResource",
+                "ecr:PutRegistryScanningConfiguration",
+                "ecr:PutRegistryPolicy",
+                "ecr:DeleteLifecyclePolicy",
+                "ecr:DeleteRepository",
+                "ecr:DescribeImages",
+                "ecr:DeleteRepositoryCreationTemplate",
+                "ecr:TagResource",
+                "ecr:DescribeRepositories",
+                "ecr:DeleteRepositoryPolicy",
+                "ecr:PutSigningConfiguration",
+                "ecr:PutReplicationConfiguration",
+                "ecr:GetLifecyclePolicy"
+            ],
+            "Resource": arn of the resources
+        }
+    ]
+}
